@@ -50,10 +50,12 @@ const results: Record<string, 'ok' | 'missing' | 'name-mismatch'> = {};
 // The users list has a search/filter box. Anchor on its accessible name;
 // if this locator misses on your console, run `npx playwright codegen`
 // and adjust — this is the one selector most likely to need tuning.
+// Only visible <input> elements whose label/placeholder mentions "search" —
+// this excludes Google's hidden "Close search" button that also matches /search/i.
 const searchBox = page
-  .getByRole('searchbox')
-  .or(page.getByPlaceholder(/search/i))
-  .or(page.getByLabel(/search/i))
+  .locator(
+    'input[aria-label*="search" i]:visible, input[placeholder*="search" i]:visible'
+  )
   .first();
 
 for (const user of spec.users) {
