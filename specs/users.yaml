@@ -8,16 +8,17 @@ notes: >
   POC batch. Ticket/reference goes here so every run is traceable.
 
 users:
-  - firstName: Ana
-    lastName: Torres
-    email: ana.torres
+  - firstName: John
+    lastName: Winter
+    email: john.winter
 
-  - firstName: Carlos
-    lastName: Mendez
-    email: carlos.mendez
+  - firstName: Charles
+    lastName: Snow
+    email: charles.snow
 
   # Optional per-user fields you can add later once the script supports them:
   # - firstName: Maria
   #   lastName: Lopez
   #   email: maria.lopez
   #   orgUnit: "/Sales"
+
