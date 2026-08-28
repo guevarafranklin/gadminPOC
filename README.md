@@ -1,4 +1,4 @@
-# Google Admin POC — Playwright user creation
+# Google Admin POC — Playwright users creation
 
 ## Run
 
@@ -9,8 +9,11 @@ npx playwright install chrome   # uses real Chrome, not bundled Chromium
 # 1. Capture your session (manual login + 2FA, once)
 npm run auth
 
-# 2. Create a user
-npm run create-user -- --first Ana --last Torres --email ana.torres
+# 2. Create a users
+npm run create-user -- --spec specs/users.yaml --yes
+
+# 3. Verify users creation
+npm run verify-users -- --spec specs/users.yaml
 ```
 
 ## What this POC proves for the ERP tool
