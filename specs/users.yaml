@@ -1,0 +1,23 @@
+# User provisioning spec — the source of truth.
+# Run with: npm run create-user -- --spec specs/users.yaml [--yes]
+#
+# Only the local part of the email goes here; the domain comes from
+# your Workspace and is completed by the Admin console itself.
+
+notes: >
+  POC batch. Ticket/reference goes here so every run is traceable.
+
+users:
+  - firstName: Ana
+    lastName: Torres
+    email: ana.torres
+
+  - firstName: Carlos
+    lastName: Mendez
+    email: carlos.mendez
+
+  # Optional per-user fields you can add later once the script supports them:
+  # - firstName: Maria
+  #   lastName: Lopez
+  #   email: maria.lopez
+  #   orgUnit: "/Sales"
