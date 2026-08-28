@@ -1,67 +1,97 @@
 import { chromium } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 
 /**
- * Step 2 — the actual automation:
- *   npm run create-user -- --first Ana --last Torres --email ana.torres
- *
- * Reuses the session captured by save-auth.ts. Same pattern as the ERP tool:
- * role/label-based selectors, explicit waits on the app's own signals,
- * and a review pause before the irreversible click.
+ * Spec-driven user creation:
+ *   npm run create-user -- --spec specs/users.yaml
+ *   npm run create-user -- --spec specs/users.yaml --yes   (no confirmation pause)
  */
 
-// --- tiny arg parsing ---------------------------------------------------
+// --- args + spec loading ------------------------------------------------
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);
   if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
   if (fallback !== undefined) return fallback;
   throw new Error(`Missing --${name}`);
 }
-const first = arg('first');
-const last = arg('last');
-const email = arg('email'); // local part only; domain comes from your workspace
+
+interface UserSpec {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+interface Spec {
+  notes?: string;
+  users: UserSpec[];
+}
+
+const specPath = arg('spec', 'specs/users.yaml');
+const autoSubmit = process.argv.includes('--yes');
+const spec = parse(readFileSync(specPath, 'utf-8')) as Spec;
+
+// Minimal validation — fail before the browser ever opens.
+if (!Array.isArray(spec.users) || spec.users.length === 0) {
+  throw new Error(`${specPath}: "users" must be a non-empty list`);
+}
+for (const [i, u] of spec.users.entries()) {
+  for (const field of ['firstName', 'lastName', 'email'] as const) {
+    if (!u[field]) throw new Error(`${specPath}: users[${i}] is missing "${field}"`);
+  }
+  if (u.email.includes('@')) {
+    throw new Error(`${specPath}: users[${i}].email should be the local part only (no @domain)`);
+  }
+}
+console.log(`Loaded ${spec.users.length} user(s) from ${specPath}`);
 
 // --- run ----------------------------------------------------------------
 const browser = await chromium.launch({ headless: false, channel: 'chrome' });
 const context = await browser.newContext({ storageState: '.auth/google.json' });
 const page = await context.newPage();
 
-// Go straight to Directory > Users
 await page.goto('https://admin.google.com/ac/users');
-
-// If we got bounced to a login page, the saved session expired.
 if (page.url().includes('accounts.google.com')) {
   console.error('Session expired — run `npm run auth` again.');
   await browser.close();
   process.exit(1);
 }
 
-// Open the "Add new user" dialog.
-// Google's DOM classes are obfuscated, so we anchor on visible text/roles.
-await page.getByText('Add new user', { exact: false }).first().click();
+const results: Record<string, string> = {};
 
-// Fill the form using its labels.
-const dialog = page.getByRole('dialog');
-await dialog.getByLabel(/first name/i).fill(first);
-await dialog.getByLabel(/last name/i).fill(last);
-await dialog.getByLabel(/primary email/i).fill(email);
+for (const user of spec.users) {
+  console.log(`\n→ Creating ${user.firstName} ${user.lastName} <${user.email}@…>`);
 
-// console.log(`Form filled: ${first} ${last} <${email}@…>`);
-// console.log('Review the dialog in the browser. Press Enter to submit, Ctrl+C to abort...');
-// await new Promise<void>((resolve) => process.stdin.once('data', () => resolve()));
+  await page.getByText('Add new user', { exact: false }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel(/first name/i).fill(user.firstName);
+  await dialog.getByLabel(/last name/i).fill(user.lastName);
+  await dialog.getByLabel(/primary email/i).fill(user.email);
 
-// await dialog.getByRole('button', { name: /add new user/i }).click();
-console.log(`Form filled: ${first} ${last} <${email}@…>`);
+  if (!autoSubmit) {
+    console.log('  Review the dialog. Press Enter to submit, Ctrl+C to abort...');
+    await new Promise<void>((resolve) => process.stdin.once('data', () => resolve()));
+  }
 
-const autoSubmit = process.argv.includes('--yes');
-if (!autoSubmit) {
-  console.log('Press Enter to submit, Ctrl+C to abort (or pass --yes to skip this)...');
-  await new Promise<void>((resolve) => process.stdin.once('data', () => resolve()));
+  try {
+    await dialog.getByRole('button', { name: /add new user/i }).click();
+    await page.getByText(/user added|has been added/i).waitFor({ timeout: 15_000 });
+    results[user.email] = 'created';
+    console.log('  ✔ created');
+    // Close the confirmation dialog so the next iteration starts clean.
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+  } catch (err) {
+    results[user.email] = `failed: ${(err as Error).message.split('\n')[0]}`;
+    console.error(`  ✘ failed — likely already exists or the dialog changed. Skipping.`);
+    await page.keyboard.press('Escape'); // recover and continue with the rest
+    await page.waitForTimeout(500);
+  }
 }
 
-await dialog.getByRole('button', { name: /add new user/i }).click();
-
-// Wait for Google's own confirmation instead of a blind timeout.
-await page.getByText(/user added|has been added/i).waitFor({ timeout: 15_000 });
-console.log('User created ✔');
+// --- summary ------------------------------------------------------------
+console.log('\nRun summary:');
+for (const [email, status] of Object.entries(results)) {
+  console.log(`  ${email}: ${status}`);
+}
 
 await browser.close();
